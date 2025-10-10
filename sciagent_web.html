@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SciAgent Web Interface</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            backdrop-filter: blur(10px);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            font-weight: 300;
+        }
+        
+        .chat-area {
+            height: 450px;
+            border: none;
+            border-radius: 12px;
+            padding: 20px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            margin-bottom: 20px;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .message {
+            margin-bottom: 20px;
+            animation: fadeIn 0.3s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .user-message {
+            text-align: right;
+        }
+        
+        .user-message .message-bubble {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 20px 20px 5px 20px;
+            display: inline-block;
+            max-width: 70%;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .system-message {
+            text-align: left;
+        }
+        
+        .system-message .message-bubble {
+            background: white;
+            border: 1px solid #e9ecef;
+            padding: 20px;
+            border-radius: 20px 20px 20px 5px;
+            display: inline-block;
+            max-width: 85%;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .scientific-section {
+            margin: 20px 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-left: 5px solid #007bff;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,123,255,0.1);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .scientific-section:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,123,255,0.15);
+        }
+        
+        .scientific-section h4 {
+            margin: 0 0 15px 0;
+            color: #007bff;
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .scientific-section p {
+            margin: 0;
+            line-height: 1.8;
+            text-align: justify;
+            color: #2c3e50;
+            font-size: 15px;
+        }
+        
+        .scientific-section ul {
+            margin: 15px 0;
+            padding-left: 0;
+            list-style: none;
+        }
+        
+        .scientific-section li {
+            margin: 12px 0;
+            line-height: 1.6;
+            padding: 10px 15px;
+            background: rgba(255,255,255,0.7);
+            border-radius: 8px;
+            border-left: 3px solid #28a745;
+            position: relative;
+        }
+        
+        .scientific-section li:before {
+            content: "▶";
+            color: #28a745;
+            font-weight: bold;
+            position: absolute;
+            left: -5px;
+        }
+        
+        .sender-label {
+            display: inline-block;
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 10px rgba(40, 167, 69, 0.3);
+        }
+        
+        .sender-label.bot {
+            background: linear-gradient(135deg, #6f42c1 0%, #e83e8c 100%);
+            box-shadow: 0 2px 10px rgba(111, 66, 193, 0.3);
+        }
+        
+        .message-content {
+            margin-top: 10px;
+        }
+        
+        .input-area {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        
+        .input-area input {
+            flex: 1;
+            padding: 15px 20px;
+            border: 2px solid #e9ecef;
+            border-radius: 25px;
+            font-size: 16px;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .input-area input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .input-area button {
+            padding: 15px 25px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .input-area button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+        }
+        
+        .input-area button:active {
+            transform: translateY(0);
+        }
+        
+        .status {
+            padding: 10px 20px;
+            border-radius: 20px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .status.active {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
+        }
+        
+        .status.waiting {
+            background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(255, 193, 7, 0.3);
+        }
+        
+        .status.error {
+            background: linear-gradient(135deg, #dc3545 0%, #e83e8c 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(220, 53, 69, 0.3);
+        }
+        
+        .long-content {
+            max-height: 400px;
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+        
+        .long-content::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .long-content::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 3px;
+        }
+        
+        .long-content::-webkit-scrollbar-thumb {
+            background: #007bff;
+            border-radius: 3px;
+        }
+        
+        .long-content::-webkit-scrollbar-thumb:hover {
+            background: #0056b3;
+        }
+        
+        .chat-area::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .chat-area::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+        
+        .chat-area::-webkit-scrollbar-thumb {
+            background: #007bff;
+            border-radius: 4px;
+        }
+        
+        .chat-area::-webkit-scrollbar-thumb:hover {
+            background: #0056b3;
+        }
+        
+        .key-steps {
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            border-left: 5px solid #2196f3;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 12px;
+        }
+        
+        .key-steps h4 {
+            color: #1976d2;
+            margin-bottom: 15px;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        .step-item {
+            margin: 15px 0;
+            padding: 15px;
+            background: rgba(255,255,255,0.8);
+            border-radius: 8px;
+            border-left: 3px solid #2196f3;
+        }
+        
+        .step-title {
+            font-weight: 600;
+            color: #1976d2;
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧬 SciAgent 科学发现助手</h1>
+        
+        <div id="status" class="status active">准备就绪</div>
+        
+        <div id="chatArea" class="chat-area">
+            <div class="message system-message">
+                <div class="message-bubble">
+                    <div class="sender-label bot">🤖 系统</div>
+                    <div class="message-content">
+                        欢迎使用SciAgent！请输入您的研究问题开始对话。
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="input-area">
+            <input type="text" id="messageInput" placeholder="输入您的研究问题..." />
+            <button onclick="sendMessage()">🚀 发送</button>
+            <button onclick="clearChat()">🗑️ 清除</button>
+        </div>
+    </div>
+
+    <script>
+        let sessionId = null;
+        let isPolling = false;
+        let displayedMessages = new Set(); // 新增：消息去重集合
+        const API_BASE = 'http://172.16.235.95:8000';
+        
+        function formatScientificContent(content) {
+            // 尝试解析JSON格式的科学内容
+            try {
+                const jsonContent = JSON.parse(content);
+                return formatStructuredContent(jsonContent);
+            } catch (e) {
+                // 如果不是JSON，尝试格式化长文本内容
+                return formatLongTextContent(content);
+            }
+        }
+        
+        function formatStructuredContent(jsonContent) {
+            let formatted = '';
+            
+            // 处理假设
+            if (jsonContent['1- hypothesis']) {
+                formatted += '<div class="scientific-section"><h4>🔬 研究假设</h4><p>' + 
+                    jsonContent['1- hypothesis'] + '</p></div>';
+            }
+            
+            // 处理预期结果
+            if (jsonContent['2- outcome']) {
+                formatted += '<div class="scientific-section"><h4>📊 预期结果</h4><p>' + 
+                    jsonContent['2- outcome'] + '</p></div>';
+            }
+            
+            // 处理机制
+            if (jsonContent['3- mechanisms']) {
+                formatted += '<div class="scientific-section"><h4>⚙️ 作用机制</h4><p>' + 
+                    jsonContent['3- mechanisms'] + '</p></div>';
+            }
+            
+            // 处理设计原则
+            if (jsonContent['4- design_principles']) {
+                formatted += '<div class="scientific-section"><h4>📐 设计原则</h4><ul>';
+                jsonContent['4- design_principles'].forEach(principle => {
+                    formatted += '<li>' + principle + '</li>';
+                });
+                formatted += '</ul></div>';
+            }
+            
+            // 处理意外特性
+            if (jsonContent['5- unexpected_properties']) {
+                formatted += '<div class="scientific-section"><h4>✨ 意外特性</h4><p>' + 
+                    jsonContent['5- unexpected_properties'] + '</p></div>';
+            }
+            
+            // 处理比较
+            if (jsonContent['6- comparison']) {
+                formatted += '<div class="scientific-section"><h4>📈 对比分析</h4><p>' + 
+                    jsonContent['6- comparison'] + '</p></div>';
+            }
+            
+            // 处理新颖性
+            if (jsonContent['7- novelty']) {
+                formatted += '<div class="scientific-section"><h4>🆕 创新性</h4><p>' + 
+                    jsonContent['7- novelty'] + '</p></div>';
+            }
+            
+            return formatted;
+        }
+        
+        function formatLongTextContent(content) {
+            // 处理长文本内容，识别关键部分并格式化
+            let formatted = '<div class="long-content">';
+            
+            // 检查是否包含关键步骤
+            if (content.includes('Key Steps for Synthetic Biology Experimental Work') || 
+                content.includes('关键步骤') || 
+                content.includes('实验步骤')) {
+                
+                // 分割内容
+                const sections = content.split(/(?=\d+\.\s*\*\*)|(?=\*\*Key Steps)|(?=\*\*Unique Aspects)/);
+                
+                sections.forEach(section => {
+                    if (section.trim()) {
+                        if (section.includes('Key Steps for Synthetic Biology Experimental Work')) {
+                            formatted += '<div class="key-steps"><h4>🧪 合成生物学实验关键步骤</h4>';
+                        } else if (section.includes('Unique Aspects')) {
+                            formatted += '<div class="scientific-section"><h4>🌟 独特方面</h4>';
+                        } else if (section.match(/^\d+\.\s*\*\*/)) {
+                            // 处理编号步骤
+                            const stepMatch = section.match(/^\d+\.\s*\*\*(.*?)\*\*:(.*)/s);
+                            if (stepMatch) {
+                                formatted += '<div class="step-item">';
+                                formatted += '<div class="step-title">' + stepMatch[1].trim() + '</div>';
+                                formatted += '<div>' + formatStepContent(stepMatch[2].trim()) + '</div>';
+                                formatted += '</div>';
+                            }
+                        } else {
+                            formatted += '<p>' + section.trim().replace(/\n/g, '<br>') + '</p>';
+                        }
+                    }
+                });
+                
+                formatted += '</div></div>';
+            } else {
+                // 普通长文本处理
+                formatted += content.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                formatted += '</div>';
+            }
+            
+            return formatted;
+        }
+        
+        function formatStepContent(content) {
+            // 格式化步骤内容
+            return content
+                .replace(/\n/g, '<br>')
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/- (.*?)(?=<br>|$)/g, '<div style="margin-left: 20px; margin-top: 8px;">• $1</div>');
+        }
+        
+        function addFormattedMessage(sender, content, isUser = false) {
+            // 创建消息唯一标识符用于去重
+            const messageHash = `${sender}-${content.substring(0, 100)}-${isUser}`;
+            
+            // 检查消息是否已经显示过
+            if (displayedMessages.has(messageHash)) {
+                return; // 如果消息已存在，直接返回不添加
+            }
+            
+            // 将消息标识符添加到去重集合中
+            displayedMessages.add(messageHash);
+            
+            const chatArea = document.getElementById('chatArea');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user-message' : 'system-message'}`;
+            
+            const messageBubble = document.createElement('div');
+            messageBubble.className = 'message-bubble';
+            
+            // 创建发送者标签
+            const senderSpan = document.createElement('span');
+            senderSpan.className = isUser ? 'sender-label' : 'sender-label bot';
+            
+            // 将 chat_manager 替换为机器人图标
+            const displaySender = sender.replace(/\[?chat_manager\]?/gi, '🤖');
+            senderSpan.textContent = displaySender;
+            
+            // 创建内容区域
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            
+            // 格式化科学内容
+            const formattedContent = formatScientificContent(content);
+            
+            // 如果内容包含HTML格式，使用innerHTML，否则使用textContent
+            if (formattedContent.includes('<div class="scientific-section">') || 
+                formattedContent.includes('<div class="key-steps">') ||
+                formattedContent.includes('<div class="long-content">')) {
+                contentDiv.innerHTML = formattedContent;
+            } else {
+                contentDiv.textContent = content;
+            }
+            
+            messageBubble.appendChild(senderSpan);
+            messageBubble.appendChild(contentDiv);
+            messageDiv.appendChild(messageBubble);
+            chatArea.appendChild(messageDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+        
+        function addMessage(content, isUser = false) {
+            const chatArea = document.getElementById('chatArea');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user-message' : 'system-message'}`;
+            
+            const messageBubble = document.createElement('div');
+            messageBubble.className = 'message-bubble';
+            
+            if (isUser) {
+                const senderSpan = document.createElement('span');
+                senderSpan.className = 'sender-label';
+                senderSpan.textContent = '👤 您';
+                messageBubble.appendChild(senderSpan);
+            }
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.textContent = content;
+            
+            messageBubble.appendChild(contentDiv);
+            messageDiv.appendChild(messageBubble);
+            chatArea.appendChild(messageDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+        
+        function updateStatus(status, text) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = `status ${status}`;
+            statusDiv.textContent = text;
+        }
+        
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            addMessage(message, true);
+            input.value = '';
+            
+            try {
+                updateStatus('active', '🚀 发送中...');
+                
+                const response = await fetch(`${API_BASE}/chat`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        session_id: sessionId,
+                        clear_history: sessionId === null
+                    })
+                });
+                
+                const data = await response.json();
+                sessionId = data.session_id;
+                
+                // 处理响应
+                const responseData = JSON.parse(data.response);
+                if (responseData.type === 'input_request') {
+                    addFormattedMessage('🤖 系统', `系统提示: ${responseData.prompt}`);
+                    updateStatus('waiting', '⏳ 等待系统处理...');
+                } else {
+                    addFormattedMessage('🤖 系统', data.response);
+                    updateStatus('active', '✅ 活动中');
+                }
+                
+                // 开始轮询
+                if (!isPolling) {
+                    startPolling();
+                }
+                
+            } catch (error) {
+                addFormattedMessage('❌ 错误', `错误: ${error.message}`);
+                updateStatus('error', '❌ 发送失败');
+            }
+        }
+        
+        async function startPolling() {
+            if (isPolling || !sessionId) return;
+            
+            isPolling = true;
+            
+            while (isPolling && sessionId) {
+                try {
+                    const response = await fetch(`${API_BASE}/session/${sessionId}/poll`);
+                    const data = await response.json();
+                    
+                    if (data.data) {
+                        const responseData = data.data;
+                        
+                        if (responseData.type === 'input_request') {
+                            addFormattedMessage('🤖 系统', `系统提示: ${responseData.prompt}`);
+                            updateStatus('waiting', '⏳ 等待用户输入');
+                        } else if (responseData.type === 'message') {
+                            // 处理agent之间的对话消息
+                            const senderName = responseData.sender || '系统';
+                            const content = responseData.content || '';
+                            // 将转义的换行符转换回真正的换行符
+                            const displayContent = content.replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t');
+                            addFormattedMessage(senderName, displayContent);
+                            updateStatus('active', '💬 对话进行中...');
+                        } else if (responseData.type === 'chat_completed') {
+                            addFormattedMessage('🤖 系统', '对话完成!');
+                            updateStatus('active', '✅ 对话完成');
+                            isPolling = false;
+                            break;
+                        } else if (responseData.type === 'error') {
+                            addFormattedMessage('❌ 错误', `错误: ${responseData.error}`);
+                            updateStatus('error', '❌ 发生错误');
+                            isPolling = false;
+                            break;
+                        } else {
+                            // 处理其他未知类型的消息
+                            console.log('未处理的消息类型:', responseData);
+                            if (responseData.content) {
+                                addFormattedMessage('🤖 系统', responseData.content);
+                            }
+                        }
+                    }
+                    
+                    // 检查会话状态
+                    if (data.status === 'completed' || data.status === 'error' || data.status === 'timeout') {
+                        isPolling = false;
+                        updateStatus('active', `✅ 会话${data.status}`);
+                        break;
+                    }
+                    
+                } catch (error) {
+                    console.error('轮询错误:', error);
+                }
+                
+                await new Promise(resolve => setTimeout(resolve, 2000)); // 等待2秒
+            }
+        }
+        
+        // 删除后端会话的异步函数
+        async function deleteSession(sessionIdToDelete) {
+            try {
+                const response = await fetch(`${API_BASE}/session/${sessionIdToDelete}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                if (response.ok) {
+                    console.log('会话已成功删除');
+                } else {
+                    console.warn('删除会话时出现问题:', response.status);
+                }
+            } catch (error) {
+                console.error('删除会话时发生错误:', error);
+            }
+        }
+        
+        async function clearChat() {
+            // 停止轮询
+            if (isPolling) {
+                isPolling = false;
+                updateStatus('已停止');
+            }
+            
+            // 如果有活跃会话，先删除后端会话
+            if (sessionId) {
+                try {
+                    await deleteSession();
+                } catch (error) {
+                    console.error('删除会话失败:', error);
+                }
+            }
+            
+            // 清空前端状态
+            const chatArea = document.getElementById('chat-area');
+            chatArea.innerHTML = '<div class="message assistant-message">您好！我是科学发现助手。请告诉我您想要探索的研究问题。</div>';
+            
+            // 重置所有状态变量
+            sessionId = null;
+            isPolling = false;
+            displayedMessages.clear(); // 清空消息去重集合
+            
+            // 清空输入框
+            const messageInput = document.getElementById('message-input');
+            if (messageInput) {
+                messageInput.value = '';
+            }
+            
+            // 更新状态显示
+            updateStatus('就绪');
+            
+            // 强制清理浏览器缓存中的相关数据
+            if (typeof(Storage) !== "undefined") {
+                localStorage.removeItem('sciagent_session');
+                sessionStorage.clear();
+            }
+        }
+        
+        // 回车发送消息
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>
