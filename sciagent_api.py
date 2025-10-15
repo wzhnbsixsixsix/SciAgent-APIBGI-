@@ -152,6 +152,9 @@ class ChatSession:
         self.message_counter = 0    # 消息计数器
         self.last_message_hash = None  # 最后一条消息的哈希
         
+        # 添加终止信号标志
+        self.finishend_pending = False
+        
     def update_activity(self):
         self.last_activity = datetime.now()
         
@@ -263,10 +266,7 @@ def create_custom_user_proxy(session: ChatSession):
     def custom_get_human_input(prompt=""):
         # 删除内容完整性检测，不再调用 check_completion_status
         
-        # 检查是否是代理间的自动化流程
-        if "critic_agent" in prompt.lower() or "next speaker" in prompt.lower():
-            logger.info("检测到代理间自动化流程，自动继续")
-            return ""  # 自动继续，不等待用户输入
+
         
         # 对于用户输入请求，先检查是否有简单的继续信号
         logger.info(f"用户输入请求: {prompt}")
@@ -289,15 +289,15 @@ def create_custom_user_proxy(session: ChatSession):
         # 转换为小写进行检查
         content_lower = content.lower()
         
-        # 只检查 TERMINATE 关键词
-        if "terminate" in content_lower:
-            logger.info("检测到TERMINATE关键词")
+        # 只检查 finishend 关键词
+        if "finishend" in content_lower:
+            logger.info("检测到finishend关键词")
             # 发送指定格式的chat_completed消息
             session.add_unique_message({
                 "type": "chat_completed",
                 "result": "研究分析已完成",
                 "timestamp": datetime.now().isoformat(),
-                "message_id": f"terminate_{session.message_counter}"
+                "message_id": f"finishend_{session.message_counter}"
             })
             session.status = "completed"
             session.waiting_for_input = False
@@ -309,7 +309,7 @@ def create_custom_user_proxy(session: ChatSession):
         name="user",
         is_termination_msg=improved_is_termination_msg,
         human_input_mode="ALWAYS",  # 保持ALWAYS以确保及时响应
-        system_message="user. You are a human admin. You pose the task. When you want to end the session, please respond with 'TERMINATE'.",
+        system_message="user. You are a human admin. You pose the task. When you want to end the session, please respond with 'finishend'.",
         llm_config=False,
         code_execution_config=False,
     )
@@ -359,6 +359,7 @@ def create_custom_user_proxy(session: ChatSession):
     
     @custom_user.register_for_execution()
     def rate_novelty_feasibility_custom(hypothesis: Annotated[str, 'the research hypothesis.']) -> str:
+        return rate_novelty_feasibility_impl(hypothesis)
         return rate_novelty_feasibility_impl(hypothesis)
     
     # 重新注册到planner和assistant，同时注册LLM调用和执行
@@ -501,20 +502,17 @@ def run_chat_session(session: ChatSession, initial_message: str, clear_history: 
                 self.original_stdout.write(text)
                 self.original_stdout.flush()
                 
-                # 检查是否包含 TERMINATE（不区分大小写）
-                if "terminate" in text.lower():
-                    logger.info(f"[TERMINATE] 检测到终止信号: session={self.session.session_id}")
-                    # 立即发送 chat_completed 消息
-                    chat_completed_message = {
-                        "type": "chat_completed",
-                        "result": "Session terminated by TERMINATE signal",
-                        "timestamp": datetime.now().isoformat(),
-                        "session_id": self.session.session_id
-                    }
-                    self.session.add_unique_message(chat_completed_message)
-                    # 更新会话状态
-                    self.session.status = "completed"
-                    self.session.waiting_for_input = False
+                # 检查是否包含 finishend（不区分大小写）
+                if "finishend" in text.lower():
+                    logger.info(f"[finishend] 检测到终止信号: session={self.session.session_id}")
+                    # 先刷新所有缓冲区内容
+                    self._flush_content_buffer()
+                    # 标记会话即将完成，但不立即设置状态
+                    if not hasattr(self.session, 'finishend_pending') or not self.session.finishend_pending:
+                        self.session.finishend_pending = True
+                        # 设置一个延迟时间，确保后续内容有时间被处理
+                        self.session.finishend_delay_start = time.time()
+                    # 继续处理文本，不要 return，让后续内容正常进入队列
                 
                 # 将文本添加到缓冲区
                 self.buffer += text
@@ -615,6 +613,32 @@ def run_chat_session(session: ChatSession, initial_message: str, clear_history: 
                     }
                     self.session.add_unique_message(content_message)
                     self.content_buffer.clear()
+                
+                # 检查是否有待处理的终止信号，并且是否已经等待足够长时间
+                if (hasattr(self.session, 'finishend_pending') and 
+                    self.session.finishend_pending and
+                    hasattr(self.session, 'finishend_delay_start')):
+                    
+                    # 检查是否已经等待了足够的时间（严格60秒）
+                    current_time = time.time()
+                    delay_duration = current_time - self.session.finishend_delay_start
+                    
+                    # 只有等待时间超过60秒才发送完成消息
+                    if delay_duration >= 60.0:
+                        logger.info(f"[finishend] 延迟{delay_duration:.1f}秒后发送完成消息")
+                        # 现在可以安全地发送 chat_completed 消息并设置状态
+                        chat_completed_message = {
+                            "type": "chat_completed",
+                            "result": "Session finished by finishend signal",
+                            "timestamp": datetime.now().isoformat(),
+                            "session_id": self.session.session_id
+                        }
+                        self.session.add_unique_message(chat_completed_message)
+                        # 更新会话状态
+                        self.session.status = "completed"
+                        self.session.waiting_for_input = False
+                        self.session.finishend_pending = False
+                        delattr(self.session, 'finishend_delay_start')
                     
             def flush(self):
                 self.original_stdout.flush()
@@ -650,8 +674,8 @@ def run_chat_session(session: ChatSession, initial_message: str, clear_history: 
                         content = latest_message.get("content", "").lower()
                         
                         # 检查是否包含终止信号
-                        if "terminate" in content:
-                            logger.info(f"在消息中检测到终止信号: terminate")
+                        if "finishend" in content:
+                            logger.info(f"在消息中检测到终止信号: finishend")
                             # 立即发送chat_completed消息
                             session.output_queue.put({
                                 "type": "chat_completed", 
@@ -831,6 +855,15 @@ async def poll_session(session_id: str):
                     "timestamp": datetime.now().isoformat()
                 },
                 "status": session.status,
+                "timestamp": datetime.now().isoformat()
+            }
+        
+        # 如果会话处于 finishend_pending 状态，继续返回 active 状态
+        if hasattr(session, 'finishend_pending') and session.finishend_pending:
+            return {
+                "session_id": session_id,
+                "data": None,
+                "status": "active",  # 在延迟期间保持 active 状态
                 "timestamp": datetime.now().isoformat()
             }
         
