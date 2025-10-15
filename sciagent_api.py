@@ -35,6 +35,37 @@ sys.path.append('.')  # 添加当前目录到路径
 
 # 保存原始的logging模块
 import logging as std_logging
+
+# 创建自定义的日志格式器
+class CustomFormatter(std_logging.Formatter):
+    def format(self, record):
+        # 对于特定的日志记录，使用简化格式
+        if hasattr(record, 'is_api_response') or hasattr(record, 'is_queue_info'):
+            return f"[API] {record.getMessage()}"
+        return super().format(record)
+
+# 配置日志
+std_logging.basicConfig(
+    level=std_logging.INFO,  # 改为INFO级别，减少DEBUG信息
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        std_logging.StreamHandler(),
+        std_logging.FileHandler('/home/ZHWang/workspace/SciAgent/SciAgentsDiscovery/API2.0/sciagent_api.log')
+    ]
+)
+
+# 设置第三方库的日志级别为WARNING，减少噪音
+std_logging.getLogger('openai').setLevel(std_logging.WARNING)
+std_logging.getLogger('httpx').setLevel(std_logging.WARNING)
+std_logging.getLogger('urllib3').setLevel(std_logging.WARNING)
+std_logging.getLogger('autogen').setLevel(std_logging.WARNING)
+
+logger = std_logging.getLogger(__name__)
+
+# 创建专门的API响应日志记录器
+api_logger = std_logging.getLogger('api_responses')
+api_logger.setLevel(std_logging.INFO)
+
 std_logging.basicConfig(
     level=std_logging.DEBUG,  # 改为DEBUG级别
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -130,6 +161,15 @@ class ChatSession:
     def add_unique_message(self, message_data):
         """添加消息到队列，确保不重复"""
         try:
+            # 对于 chat_completed 类型的消息，直接添加到队列，不进行重复检查
+            if message_data.get('type') == 'chat_completed':
+                if 'message_id' not in message_data:
+                    message_data['message_id'] = len(self.sent_messages) + 1
+                self.output_queue.put(message_data)
+                # 记录重要的完成消息
+                logger.info(f"[QUEUE] Added chat_completed: {message_data.get('content', '')[:100]}")
+                return
+            
             # 生成消息哈希
             content = str(message_data.get('content', ''))
             sender = str(message_data.get('sender', ''))
@@ -150,16 +190,21 @@ class ChatSession:
                 self.output_queue.put(message_data)
                 self.sent_messages.add(message_hash)
                 
+                # 记录重要消息类型
+                if msg_type in ['agent_message', 'system_info', 'input_request']:
+                    content_preview = content[:100] + "..." if len(content) > 100 else content
+                    logger.info(f"[QUEUE] Added {msg_type} from {sender}: {content_preview}")
+                
                 # 限制sent_messages集合大小，防止内存泄漏
                 if len(self.sent_messages) > 1000:
                     # 移除最旧的一半消息哈希
                     old_hashes = list(self.sent_messages)[:500]
                     for old_hash in old_hashes:
                         self.sent_messages.discard(old_hash)
-                
-                logger.debug(f"Added unique message: type={msg_type}, hash={message_hash[:8]}")
             else:
-                logger.debug(f"Skipped duplicate message: type={msg_type}, hash={message_hash[:8]}")
+                # 只记录重要的重复消息
+                if msg_type in ['agent_message', 'system_info']:
+                    logger.info(f"[QUEUE] Skipped duplicate {msg_type}: {message_hash[:8]}")
                 
         except Exception as e:
             logger.error(f"Error adding message: {e}")
@@ -180,8 +225,7 @@ class APIUserProxyAgent:
         
     def get_human_input(self, prompt: str = "") -> str:
         """获取人类输入，通过API队列机制"""
-        logger.info(f"系统请求用户输入: session_id={self.session.session_id}")
-        logger.info(f"输入提示: {prompt}")
+        logger.info(f"[INPUT] 请求用户输入: session={self.session.session_id}")
         
         self.session.waiting_for_input = True
         self.session.current_prompt = prompt
@@ -194,22 +238,19 @@ class APIUserProxyAgent:
             "timestamp": datetime.now().isoformat()
         }
         self.session.add_unique_message(input_request)
-        logger.info(f"已发送输入请求到队列")
         
         # 等待输入
         try:
-            logger.info(f"等待用户输入，超时时间: 300秒")
             user_input = self.session.input_queue.get(timeout=300)  # 5分钟超时
             self.session.waiting_for_input = False
             self.session.status = "active"
             
             # 记录用户输入
-            logger.info(f"收到用户输入: session_id={self.session.session_id}, input_length={len(user_input)}")
-            logger.debug(f"用户输入内容: {user_input}")
+            logger.info(f"[INPUT] 收到用户输入: session={self.session.session_id}, length={len(user_input)}")
             
             return user_input
         except queue.Empty:
-            logger.warning(f"用户输入超时: session_id={self.session.session_id}")
+            logger.warning(f"[INPUT] 用户输入超时: session={self.session.session_id}")
             self.session.status = "timeout"
             return "exit"  # 超时退出
 
@@ -460,6 +501,21 @@ def run_chat_session(session: ChatSession, initial_message: str, clear_history: 
                 self.original_stdout.write(text)
                 self.original_stdout.flush()
                 
+                # 检查是否包含 TERMINATE（不区分大小写）
+                if "terminate" in text.lower():
+                    logger.info(f"[TERMINATE] 检测到终止信号: session={self.session.session_id}")
+                    # 立即发送 chat_completed 消息
+                    chat_completed_message = {
+                        "type": "chat_completed",
+                        "result": "Session terminated by TERMINATE signal",
+                        "timestamp": datetime.now().isoformat(),
+                        "session_id": self.session.session_id
+                    }
+                    self.session.add_unique_message(chat_completed_message)
+                    # 更新会话状态
+                    self.session.status = "completed"
+                    self.session.waiting_for_input = False
+                
                 # 将文本添加到缓冲区
                 self.buffer += text
                 
@@ -474,6 +530,8 @@ def run_chat_session(session: ChatSession, initial_message: str, clear_history: 
                     if "Next speaker:" in line:
                         # 先刷新之前的内容缓冲区
                         self._flush_content_buffer()
+                        
+                        logger.info(f"[SPEAKER] {line}")
                         
                         system_message = {
                             "type": "system_info",
